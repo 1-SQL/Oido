@@ -19,6 +19,7 @@ DROP PROCEDURE IF EXISTS `listCategoriesRecOid`;
 DROP PROCEDURE IF EXISTS `listCategoriesRecId`;
 DROP FUNCTION IF EXISTS `getNextOid` ;
 DROP PROCEDURE IF EXISTS `storeCategory`;
+DROP PROCEDURE IF EXISTS `storeCategoryId`;
 DROP PROCEDURE IF EXISTS `storeObject` ;
 DROP PROCEDURE IF EXISTS `storeWord` ;
 DROP PROCEDURE IF EXISTS `storeWordInt` ;
@@ -79,24 +80,42 @@ CREATE PROCEDURE `createRootCategory` (
     IN oidLast INT,
     OUT id INT)
 BEGIN
-	INSERT INTO object SET parent = 0 , object.oidLast = oidLast , object.name = categoryName ;
+	START TRANSACTION;
+	INSERT INTO object SET object.parent = 0 , object.oidLast = oidLast , object.name = categoryName ;
    SET id = LAST_INSERT_ID();
 	INSERT INTO oid_table SET oid = CONCAT(oidParent,'.',oidLast) ,idObject = id ;
 	CALL createCategory(id,0);
 
 	INSERT INTO root SET root.category = id, root.oid = oidParent ;
-
+	COMMIT;
 END$$
 
 CREATE PROCEDURE `storeCategory` (
+	IN categoryName VARCHAR(45),
+    IN parent VARCHAR(100),
+    OUT oidLast INT,
+    OUT id INT)
+BEGIN
+	DECLARE idParent INT;
+	SET idParent = getId(parent);
+	StART TRANSACTION;
+	SET oidLast = getNextOid(idParent) ;
+	SET id = createObject(categoryName,idParent,oidLast) ;
+	CALL createCategory(id,idParent);
+	COMMIT;
+END$$
+
+CREATE PROCEDURE `storeCategoryId` (
 	IN categoryName VARCHAR(45),
     IN idParent INT,
     OUT oidLast INT,
     OUT id INT)
 BEGIN
+	StART TRANSACTION;
 	SET oidLast = getNextOid(idParent) ;
 	SET id = createObject(categoryName,idParent,oidLast) ;
 	CALL createCategory(id,idParent);
+	COMMIT;
 END$$
 
 CREATE PROCEDURE `storeObject` (
@@ -105,9 +124,10 @@ CREATE PROCEDURE `storeObject` (
     OUT oidLast INT,
     OUT id INT)
 BEGIN
+	START TRANSACTION;
 	SET oidLast = getNextOid(idParent) ;
 	SET id = createObject(objectName,idParent,oidLast) ;
-	
+	COMMIT;
 END$$
 
 CREATE PROCEDURE `storeWord` (
@@ -117,10 +137,11 @@ CREATE PROCEDURE `storeWord` (
     OUT id INT)
 BEGIN
 	DECLARE idParent INT;
+	START TRANSACTION;
 	SET idParent = getID(oidParent);
 	SET oidLast = getNextOid(idParent) ;
 	SET id = createObject(objectName,idParent,oidLast) ;
-	
+	COMMIT ;
 END$$
 
 CREATE PROCEDURE `storeWordInt` (
@@ -129,9 +150,10 @@ CREATE PROCEDURE `storeWordInt` (
     OUT oidLast INT,
     OUT id INT)
 BEGIN
+	START TRANSACTION;
 	SET oidLast = getNextOid(idParent) ;
 	SET id = createObject(objectName,idParent,oidLast) ;
-	
+	COMMIT;
 END$$
 
 CREATE FUNCTION `getID` (
@@ -155,20 +177,20 @@ END$$
 
 CREATE PROCEDURE `listRootCategories` ()
 BEGIN
-	SELECT object.name , getOid(object.idObject) from object,category WHERE category.parent = 0 AND object.idObject = category.category;
+	SELECT object.idObject,object.name , getOid(object.idObject) from object,category WHERE category.parent = 0 AND object.idObject = category.category;
 END$$
 
 CREATE PROCEDURE `listCategoriesOid` (
 			IN category VARCHAR(100))
 BEGIN
 	
-	SELECT object.name , getOid(object.idObject) from object,category WHERE getId(category) = object.parent AND object.idObject = category.category;
+	SELECT object.idObject,object.name , getOid(object.idObject) from object,category WHERE getId(category) = object.parent AND object.idObject = category.category;
 END$$
 
 CREATE PROCEDURE `listCategoriesId` (
 			IN category INT)
 BEGIN
-	SELECT object.name , getOid(object.idObject) from object,category WHERE category = object.parent AND object.idObject = category.category;
+	SELECT object.idObject,object.name , getOid(object.idObject) from object,category WHERE category = object.parent AND object.idObject = category.category;
 END$$
 
 CREATE PROCEDURE `listCategoriesRecOid` (
@@ -177,7 +199,7 @@ CREATE PROCEDURE `listCategoriesRecOid` (
 BEGIN
 	DECLARE search VARCHAR(100);
 	SET search = CONCAT(category,'.%');
-	select object.*,oid_table.oid from object,oid_table , category
+	select object.idObject,object.name,oid_table.oid from object,oid_table , category
 		where oid_table.idObject = object.idObject AND category.category = object.idObject AND oid_table.oid like search ;
 END$$
 
@@ -193,12 +215,12 @@ END$$
 
 CREATE PROCEDURE `listAllCategories` ()
 BEGIN
-	SELECT object.name , getOid(object.idObject) from object,category WHERE object.idObject = category.category;
+	SELECT object.idObject,object.name , getOid(object.idObject) from object,category WHERE object.idObject = category.category;
 END$$
 
 CREATE PROCEDURE `listAllObjects` ()
 BEGIN
-	SELECT object.idObject,name,oid FROM object, oid_table WHERE oid_table.idObject = object.idObject ;
+	SELECT object.idObject,object.name,oid_table.oid FROM object, oid_table WHERE oid_table.idObject = object.idObject ;
 END$$
 
 CREATE PROCEDURE `listObjects` (
@@ -218,7 +240,7 @@ END$$
 CREATE PROCEDURE `listWords` (
 			IN category VARCHAR(100))
 BEGIN
-select object.idObject,name,getOid(object.idObject) from object where object.parent = getId(category) AND object.idObject not in 
+select object.idObject,object.name,getOid(object.idObject) from object where object.parent = getId(category) AND object.idObject not in 
 	(select category.category from category group by category);
 	
 END$$
